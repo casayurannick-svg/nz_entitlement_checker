@@ -119,9 +119,9 @@ export interface AccommodationSupplementBreakdown {
 
 export interface FamilyBoostBreakdown {
   eligibleEceFeesWeekly: number;
-  rawReimbursementWeekly: number; // 25% of eligible fees
-  cappedReimbursementWeekly: number; // Max $75/wk
-  incomeAbatementWeekly: number; // Abatement between $140k and $180k
+  rawReimbursementWeekly: number; // 40% of eligible fees
+  cappedReimbursementWeekly: number; // Max $120/wk ($1,560/quarter, $6,240/yr)
+  incomeAbatementWeekly: number; // Linear abatement between $140,000 and $229,144
   finalWeeklyPayment: number;
   finalQuarterlyPayment: number;
   finalAnnualPayment: number;
@@ -144,28 +144,99 @@ export interface EntitlementCalculationResult {
         │
         ├─────────────────────────────────────────────────┐
         ▼                                                 ▼
-┌───────────────────────┐                       ┌───────────────────────┐
-│ calculateWff()        │                       │ calculateAccomSupp()  │
-│ 1. Tally FTC by age   │                       │ 1. Convert board/mortg│
-│ 2. Check IWTC hours   │                       │ 2. Lookup area cap    │
-│ 3. Check BSTC ages    │                       │ 3. Compute 70% diff   │
-│ 4. Apply 27% WFF drop │                       │ 4. Apply asset test   │
-└──────────┬────────────┘                       └───────────┬───────────┘
-           │                                                │
-           │           ┌────────────────────────┐           │
-           │           │ calculateFamilyBoost() │           │
-           │           │ 1. 25% of ECE (max $75)│           │
-           │           │ 2. Abate $140k-$180k   │           │
-           │           └───────────┬────────────┘           │
-           │                       │                        │
-           └───────────────────────┼────────────────────────┘
+┌───────────────────────────────┐       ┌───────────────────────────────┐
+│ calculateWff() (2026 IRD)     │       │ calculateAccomSupp()          │
+│ 1. FTC ($144.30 eldest,       │       │ 1. Convert board/mortgage/rent│
+│    $117.84 subsequent)        │       │ 2. Lookup area cap (1 to 4)   │
+│ 2. IWTC ($147.00/wk base)     │       │ 3. Compute 70% excess over    │
+│ 3. BSTC ($77.71/wk < 1 yr)    │       │    entry threshold            │
+│ 4. 27.5c abatement > $44,900  │       │ 4. Apply asset & income test  │
+└──────────────┬────────────────┘       └───────────────┬───────────────┘
+               │                                        │
+               │   ┌────────────────────────────────┐   │
+               │   │ calculateFamilyBoost() (2026)  │   │
+               │   │ 1. 40% of ECE (max $120/wk)    │   │
+               │   │ 2. Linear abate $140k-$229,144 │   │
+               │   └───────────────┬────────────────┘   │
+               │                   │                    │
+               └───────────────────┼────────────────────┘
                                    ▼
                 ┌─────────────────────────────────────┐
                 │ calculateAggregateEntitlements()    │
-                │ Sum totals, compile breakdowns,    │
+                │ Sum totals, compile breakdowns,     │
                 │ compute take-home & EMTR impact     │
                 └─────────────────────────────────────┘
 ```
+
+### 2.3 Statutory Calculation Formulas & 2026 IRD Policy Rules
+
+#### 2.3.1 Working for Families (WFF) Tax Credits (2026)
+WFF comprises four tax credits administered under the New Zealand Income Tax Act 2007 and Social Security Act, updated with Budget 2024 / 2026 IRD policy rates:
+
+1. **Family Tax Credit (FTC):**
+   - Eldest Child Rate: $144.30 per week ($7,503.60 per annum).
+   - Subsequent Child Rate: $117.84 per week ($6,127.68 per annum).
+   - Shared Care Adjustment: Applied proportionally based on parenting percentage if shared care is established ($\ge 33\%$).
+
+2. **In-Work Tax Credit (IWTC):**
+   - Flat Rate: $147.00 per week ($7,644.00 per annum) as legislated for 2026.
+   - Work Hours Test:
+     - Sole parent: $\ge 20$ paid work hours per week.
+     - Two-parent family: Combined $\ge 30$ paid work hours per week.
+   - Main Benefit Bar: Disqualified if receiving an income-tested main benefit (Jobseeker, Sole Parent Support, Supported Living Payment).
+
+3. **Best Start Tax Credit (BSTC):**
+   - Standard Rate: $77.71 per week ($4,040.92 per annum).
+   - Age Rules:
+     - **Year 1 (Child age $< 1$):** Universal entitlement regardless of household income. Shielded from WFF abatement.
+     - **Years 2 & 3 (Child age $1 \le \text{age} < 3$):** Subject to standalone Best Start abatement of $21.0\%$ (21c per dollar) on income exceeding $\$79,000$.
+
+4. **Minimum Family Tax Credit (MFTC):**
+   - Guarantees eligible working families working required hours (and not on benefit) a minimum net income of $\$35,316$ per annum ($\$679.15$ per week).
+   - Top-up: $\max(0, \$35,316 - \text{Net Income})$.
+
+5. **WFF Abatement Cascade:**
+   - **Abatement Threshold:** $\$44,900$ per annum.
+   - **Abatement Rate:** $27.5\%$ ($0.275$ per dollar).
+   - **Order of Abatement:**
+     $$\text{Annual Abatement} = \max(0, (\text{Annual Family Income} - 44,900) \times 0.275)$$
+     1. Abatement applies first to Family Tax Credit (FTC).
+     2. Residual unabsorbed abatement then cascades to reduce the In-Work Tax Credit (IWTC).
+     3. Year 1 Best Start is completely non-abatable.
+
+#### 2.3.2 FamilyBoost ECE Rebate (2026)
+FamilyBoost is the government early childhood education fee rebate scheme administered by Inland Revenue:
+
+1. **Reimbursement Rate & Cap:**
+   - $40\%$ rebate on eligible out-of-pocket early childhood education fees paid to licensed ECE providers (after 20 Hours ECE and MSD Childcare Subsidies are deducted).
+   - Maximum weekly rebate: $\$120.00$ per week ($\$1,560.00$ per quarter, $\$6,240.00$ per annum).
+   - Child Age Requirement: Must have at least 1 dependent child aged $< 5$ attending licensed ECE.
+
+2. **Income Abatement & Cut-off Thresholds:**
+   - **Full Entitlement Threshold:** Household income $\le \$140,000$ per annum receives $100\%$ of calculated rebate.
+   - **Phase-out Range:** Linear abatement occurs over the $\$89,144$ span between $\$140,000$ and $\$229,144$.
+   - **Cut-off Threshold:** Household income $\ge \$229,144$ per annum receives $\$0$.
+
+3. **Exact Mathematical Formula:**
+   For annual household income $I$:
+   $$\text{linearFactor} = \begin{cases} 
+   1.0 & \text{if } I \le 140,000 \\ 
+   \frac{229,144 - I}{229,144 - 140,000} = \frac{229,144 - I}{89,144} & \text{if } 140,000 < I < 229,144 \\ 
+   0.0 & \text{if } I \ge 229,144 
+   \end{cases}$$
+
+   $$\text{rawWeekly} = \text{weeklyEceFees} \times 0.40$$
+   $$\text{cappedWeekly} = \min(120.00, \text{rawWeekly})$$
+   $$\text{finalWeeklyReimbursement} = \text{roundToCents}(\text{cappedWeekly} \times \text{linearFactor})$$
+   $$\text{finalQuarterlyPayment} = \text{roundToCents}(\text{finalWeeklyReimbursement} \times 13)$$
+   $$\text{finalAnnualPayment} = \text{roundToCents}(\text{finalWeeklyReimbursement} \times 52)$$
+
+### 2.4 BDD Unit Test Suite Verification (Vitest)
+Unit tests are implemented with BDD syntax (`describe`, `it`, `expect`) using **Vitest**:
+- Configuration: `vitest.config.mts` with TypeScript path aliasing (`@/*` $\rightarrow$ `src/*`).
+- Test Suites:
+  - `src/lib/calculator/__tests__/wff.test.ts` (14 tests): Verifies 2026 FTC age rates, IWTC $147/wk work test, BestStart $77.71/wk universal year 1, 27.5c abatement over $44,900, cascading reduction from FTC to IWTC, benefit exclusions, and multi-child scenarios.
+  - `src/lib/calculator/__tests__/familyBoost.test.ts` (12 tests): Verifies 40% rebate calculation, $120/wk cap, zero payment when children are $\ge 5$ or zero fees, full entitlement at $\le \$140,000$, linear factor reduction at $\$184,572$ (midpoint 50%) and $\$200,000$, exact cut-off at $\$229,144$, and zero payment above $\$229,144$.
 
 ---
 

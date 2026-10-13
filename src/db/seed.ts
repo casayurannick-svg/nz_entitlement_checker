@@ -5,13 +5,16 @@ import {
   NewMsdPostcodeArea,
 } from './schema';
 import { sql } from 'drizzle-orm';
-import { WFF_CONSTANTS_2024 } from '../lib/calculator/wff';
+import { WFF_CONSTANTS_2026, WFF_CONSTANTS_2024 } from '../lib/calculator/wff';
 import {
   AS_MAX_CAPS_2024,
   AS_ENTRY_THRESHOLDS_2024,
   AS_ASSET_LIMITS,
 } from '../lib/calculator/accommodationSupplement';
-import { FAMILYBOOST_CONSTANTS } from '../lib/calculator/familyBoost';
+import {
+  FAMILYBOOST_CONSTANTS_2026,
+  FAMILYBOOST_CONSTANTS_2024,
+} from '../lib/calculator/familyBoost';
 
 /**
  * Curated New Zealand Postcode Mapping to MSD Accommodation Supplement Areas (1 to 4)
@@ -246,34 +249,55 @@ export const NZ_POSTCODE_SEED_DATA: NewMsdPostcodeArea[] = [
 export async function seed() {
   console.log('🌱 Starting database seeding for Turso DB...');
 
-  // 1. Seed or Upsert Rate Tables (2024/2025 Rates)
-  console.log('📊 Seeding statutory rate table (2024/2025)...');
+  // 1. Seed or Upsert Rate Tables (2026 Active Rates & 2024 Baseline)
+  console.log('📊 Seeding 2026 statutory rate table...');
+  await db
+    .insert(rateTables)
+    .values({
+      id: 'nz_rates_2026',
+      name: 'NZ Statutory Rates 2026 (IRD 2026 Rules)',
+      effectiveFrom: '2026-04-01',
+      effectiveTo: null,
+      isCurrent: true,
+      wffConfig: WFF_CONSTANTS_2026,
+      accommodationSupplementConfig: {
+        caps: AS_MAX_CAPS_2024,
+        entryThresholds: AS_ENTRY_THRESHOLDS_2024,
+        assetLimits: AS_ASSET_LIMITS,
+      },
+      familyBoostConfig: FAMILYBOOST_CONSTANTS_2026,
+    })
+    .onConflictDoUpdate({
+      target: rateTables.id,
+      set: {
+        wffConfig: WFF_CONSTANTS_2026,
+        familyBoostConfig: FAMILYBOOST_CONSTANTS_2026,
+        isCurrent: true,
+      },
+    });
+
   await db
     .insert(rateTables)
     .values({
       id: 'nz_rates_2024_2025',
-      name: 'NZ Statutory Rates 2024/2025 (Effective 1 July 2024)',
+      name: 'NZ Statutory Rates 2024/2025 (Historical Baseline)',
       effectiveFrom: '2024-07-01',
-      effectiveTo: null,
-      isCurrent: true,
+      effectiveTo: '2026-03-31',
+      isCurrent: false,
       wffConfig: WFF_CONSTANTS_2024,
       accommodationSupplementConfig: {
         caps: AS_MAX_CAPS_2024,
         entryThresholds: AS_ENTRY_THRESHOLDS_2024,
         assetLimits: AS_ASSET_LIMITS,
       },
-      familyBoostConfig: FAMILYBOOST_CONSTANTS,
+      familyBoostConfig: FAMILYBOOST_CONSTANTS_2024,
     })
     .onConflictDoUpdate({
       target: rateTables.id,
       set: {
         wffConfig: WFF_CONSTANTS_2024,
-        accommodationSupplementConfig: {
-          caps: AS_MAX_CAPS_2024,
-          entryThresholds: AS_ENTRY_THRESHOLDS_2024,
-          assetLimits: AS_ASSET_LIMITS,
-        },
-        familyBoostConfig: FAMILYBOOST_CONSTANTS,
+        familyBoostConfig: FAMILYBOOST_CONSTANTS_2024,
+        isCurrent: false,
       },
     });
 
