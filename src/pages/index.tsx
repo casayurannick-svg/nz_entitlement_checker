@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Sparkles,
   AlertTriangle,
+  MapPin,
 } from 'lucide-react';
 import {
   RelationshipStatus,
@@ -30,11 +31,48 @@ export default function HomePage() {
   const [hasInfant, setHasInfant] = useState<boolean>(false);
   const [weeklyEceFees, setWeeklyEceFees] = useState<number>(180);
   const [area, setArea] = useState<GeographicArea>(1);
+  const [postcode, setPostcode] = useState<string>('1010');
+  const [postcodeMatch, setPostcodeMatch] = useState<{
+    suburb: string;
+    city: string;
+    area: number;
+  } | null>({
+    suburb: 'Auckland Central',
+    city: 'Auckland',
+    area: 1,
+  });
   const [tenure, setTenure] = useState<HousingTenure>('renting');
   const [weeklyHousingCost, setWeeklyHousingCost] = useState<number>(680);
   const [cashAssets, setCashAssets] = useState<number>(5000);
   const [receivesMainBenefit, setReceivesMainBenefit] =
     useState<boolean>(false);
+
+  const handlePostcodeChange = async (val: string) => {
+    setPostcode(val);
+    const clean = val.trim();
+    if (clean.length === 4) {
+      try {
+        const res = await fetch(`/api/postcodes/${clean}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) {
+            setPostcodeMatch({
+              suburb: json.data.suburb,
+              city: json.data.city,
+              area: json.data.area,
+            });
+            setArea(json.data.area as GeographicArea);
+          }
+        } else {
+          setPostcodeMatch(null);
+        }
+      } catch {
+        // ignore network error
+      }
+    } else if (clean.length === 0) {
+      setPostcodeMatch(null);
+    }
+  };
 
   // Derive HouseholdProfile
   const profile: HouseholdProfile = useMemo(() => {
@@ -356,6 +394,34 @@ export default function HomePage() {
               <div className="border-t border-slate-800 pt-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                        NZ Postcode Lookup
+                      </label>
+                      <span className="text-[11px] text-slate-400">Auto-detects MSD Area</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        maxLength={4}
+                        placeholder="e.g. 1010, 6011, 8011"
+                        value={postcode}
+                        onChange={(e) => handlePostcodeChange(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2 px-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                      />
+                      <MapPin className="h-4 w-4 text-emerald-400 absolute right-3 top-2.5 pointer-events-none" />
+                    </div>
+                    {postcodeMatch && (
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-lg">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          {postcodeMatch.suburb}, {postcodeMatch.city} &rarr; <strong>Area {postcodeMatch.area}</strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                       Geographic Area (MSD AS Zone)
                     </label>
@@ -370,27 +436,27 @@ export default function HomePage() {
                       <option value={4}>Area 4: Rural & Smaller Towns</option>
                     </select>
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                      Housing Tenure
-                    </label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(['renting', 'boarding', 'homeowner'] as const).map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setTenure(t)}
-                          className={`py-2 px-1 text-xs capitalize rounded-xl font-medium transition-all ${
-                            tenure === t
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-800/80 text-slate-300 border border-slate-700/50'
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    Housing Tenure
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['renting', 'boarding', 'homeowner'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTenure(t)}
+                        className={`py-2 px-1 text-xs capitalize rounded-xl font-medium transition-all ${
+                          tenure === t
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-800/80 text-slate-300 border border-slate-700/50'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

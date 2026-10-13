@@ -177,10 +177,35 @@ export interface EntitlementCalculationResult {
 
 ### 3.2 Database Schema (`src/db/schema.ts`)
 
-```typescript
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+The database schema is defined using Drizzle ORM's SQLite core, fully compatible with Turso / libSQL edge execution.
 
-// 1. Statutory Rate Tables: Version-controlled policy numbers
+```typescript
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+// 1. MSD Postcode to Accommodation Supplement Area Mapping (Areas 1 to 4)
+export const msdPostcodeAreas = sqliteTable('msd_postcode_areas', {
+  postcode: text('postcode').primaryKey(), // 4-digit NZ postcode (e.g. "1010")
+  suburb: text('suburb').notNull(),        // Suburb or locality name (e.g. "Auckland Central")
+  city: text('city').notNull(),            // City / Territorial authority (e.g. "Auckland")
+  region: text('region').notNull(),        // Regional council area (e.g. "Auckland Region")
+  area: integer('area').notNull(),          // MSD Accommodation Supplement Area (1, 2, 3, or 4)
+  notes: text('notes'),                    // Special zoning or border notes
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+});
+
+// 2. Saved Sessions: User or client-saved calculation scenarios
+export const savedSessions = sqliteTable('saved_sessions', {
+  id: text('id').primaryKey(),
+  sessionToken: text('session_token'),
+  title: text('title'),
+  profileData: text('profile_data', { mode: 'json' }).notNull(),
+  calculatedResults: text('calculated_results', { mode: 'json' }).notNull(),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  expiresAt: text('expires_at'),
+});
+
+// 3. Statutory Rate Tables: Version-controlled policy numbers
 export const rateTables = sqliteTable('rate_tables', {
   id: text('id').primaryKey(), // e.g. "nz_rates_2024_2025"
   name: text('name').notNull(),
@@ -200,7 +225,7 @@ export const rateTables = sqliteTable('rate_tables', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
 });
 
-// 2. Anonymous Scenarios: Opt-in, PII-free permalinks for user sharing
+// 4. Anonymous Scenarios: Opt-in, PII-free permalinks for user sharing
 export const anonymousScenarios = sqliteTable('anonymous_scenarios', {
   id: text('id').primaryKey(), // Nanoid / UUID short slug
   hash: text('hash').notNull(), // SHA256 of parameters to deduplicate
@@ -216,7 +241,7 @@ export const anonymousScenarios = sqliteTable('anonymous_scenarios', {
   expiresAt: text('expires_at'), // Optional TTL
 });
 
-// 3. User Feedback & Policy Discrepancy Reports
+// 5. User Feedback & Policy Discrepancy Reports
 export const userFeedback = sqliteTable('user_feedback', {
   id: text('id').primaryKey(),
   category: text('category').notNull(), // 'calculation_mismatch', 'suggestion', 'legislation_update'
@@ -226,7 +251,7 @@ export const userFeedback = sqliteTable('user_feedback', {
 });
 ```
 
-### 3.3 Database Client Scaffolding (`src/db/index.ts`)
+### 3.3 Database Client Configuration (`src/db/index.ts`)
 
 ```typescript
 import { createClient } from '@libsql/client';
@@ -239,6 +264,29 @@ const client = createClient({
 });
 
 export const db = drizzle(client, { schema });
+```
+
+### 3.4 Migrations & Seed Architecture (`src/db/seed.ts`)
+
+#### Migration Workflow
+1. **Drizzle Kit Config (`drizzle.config.ts`):**
+   - Configured with `dialect: 'turso'` pointing to the database URL (`file:local.db` or remote Turso connection string).
+2. **Migration Generation:**
+   - Run `npm run db:generate` (`drizzle-kit generate`) to output versioned SQL files into `drizzle/`.
+   - Migration `0001_overconfident_killmonger.sql` adds `msd_postcode_areas` and `saved_sessions`.
+3. **Migration Execution:**
+   - Run `npm run db:migrate` (`drizzle-kit migrate`) to execute pending DDL against the libSQL database.
+
+#### Postcode Mapping & Seed Logic
+The seed script (`src/db/seed.ts`) populates **203 official New Zealand postcodes** mapped to MSD Accommodation Supplement Areas:
+- **Area 1 (57 postcodes):** Auckland Urban (Central, North Shore, Waitakere, Manukau, Papakura, Pukekohe) and Queenstown Lakes District Urban (Queenstown, Arrowtown, Wanaka, Frankton).
+- **Area 2 (55 postcodes):** High-cost urban regions including Wellington City, Lower Hutt, Upper Hutt, Porirua, Kapiti Coast (Paraparaumu, Waikanae), Christchurch Urban (Central, Riccarton, Papanui, Rangiora, Rolleston), Tauranga & Western Bay of Plenty (Mount Maunganui, Papamoa, Te Puke, Katikati), Hamilton Urban, and Nelson Urban.
+- **Area 3 (34 postcodes):** Provincial cities and regional centres including Whangārei, Rotorua, Taupō, Cambridge, Te Awamutu, New Plymouth, Palmerston North, Napier, Hastings, Whanganui, Blenheim, Richmond, Dunedin Urban, Mosgiel, Invercargill, Timaru, and Ashburton.
+- **Area 4 (57 postcodes):** Rural districts, smaller townships, and offshore regions (Far North, Coromandel, King Country, Central Hawke's Bay, Ruapehu, Rangitikei, Tararua, West Coast, Central Otago, Southland rural, Stewart Island, Chatham Islands).
+
+The script also seeds initial 2024/2025 statutory rate parameters into `rate_tables` using chunked upserts (`onConflictDoUpdate`) for idempotent execution:
+```bash
+npm run db:seed
 ```
 
 ---
